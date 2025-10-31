@@ -4,7 +4,7 @@ const Dotenv = require('dotenv');
 const path = require('path');
 const fastifyStatic = require('@fastify/static');
 const Database = require('better-sqlite3');
-const { generateToken } = require('./utils.js');
+const { generateToken, sendEmails, emailValid } = require('./utils.js');
 
 function connectDB() {
 	try {
@@ -67,11 +67,14 @@ fastify.post('/signup', (request, reply) => {
 		const user = db.prepare("SELECT * FROM users WHERE username = ? OR mail = ?")
 			.get(username, mail);
 		if (user) {
-			return reply.status(400).send("Username or mail already exists");
-		}
+			return reply.status(400).send("Username or mail already exists"); }
+		if (!emailValid(mail)) {
+			return reply.status(400).send("Email not valid"); }
 		const newUser = db.prepare("INSERT INTO users (name, username, mail, password) VALUES (?, ?, ?, ?)")
 			.run(name, username, mail, password);
 		generateToken(newUser.lastInsertRowid, reply);
+		try { sendEmails(mail);
+		} catch (error) {}
 		return reply.status(201).send("User succesfully registered");
 	} catch (error) {
 		console.log("Unexpected: ", error);
