@@ -55,6 +55,23 @@ fastify.get('/signup', (request, reply) => {
 		We are entering the signup endpoint");
 });
 
+fastify.post('/login', (request, reply) => {
+	const { mail, password } = request.body;
+
+	try {
+		const user = db.prepare("SELECT * FROM users WHERE mail = ?").get(mail);
+		if (!user) {
+			return reply.status(400).send("Invalid credentials"); }
+		if (user.password !== password) {
+			return reply.status(400).send("Invalid credentials"); }
+		generateToken(user.id, reply);
+		reply.status(200).send(`User with ID ${user.id} logged in succesfully`);
+	} catch (error) {
+		console.log(error);
+		reply.status(500).send("Internal Server Error");
+	}
+});
+
 fastify.post('/signup', (request, reply) => {
 	const { name, username, mail, password } = request.body;
 	if (!name || !mail || !password || !username) {
@@ -80,6 +97,11 @@ fastify.post('/signup', (request, reply) => {
 		console.log("Unexpected: ", error);
 		return reply.status(500).send("Internal Server Error");
 	}
+});
+
+fastify.post('/logout', (request, reply) => {
+	reply.cookie("jwt", "", { maxAge: 0 });
+	reply.status(200).send("User successfully logged out");
 });
 
 const port = process.env.PORT || 3000;
