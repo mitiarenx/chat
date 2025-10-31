@@ -4,9 +4,10 @@ const Dotenv = require('dotenv');
 const path = require('path');
 const fastifyStatic = require('@fastify/static');
 const Database = require('better-sqlite3');
+const jwt = require('jsonwebtoken');
 const { generateToken, sendEmails, emailValid } = require('./utils.js');
 
-function connectDB() {
+function connectDBUser() {
 	try {
 		const db = new Database('database.sqlite');
 		db.prepare(`
@@ -15,27 +16,35 @@ function connectDB() {
 			name TEXT NOT NULL,
 			username TEXT NOT NULL UNIQUE,
 			mail TEXT NOT NULL UNIQUE,
-			password TEXT NOT NULL,
-			message TEXT)
-		`).run();
+			password TEXT NOT NULL)`).run();
 		return db;
 	} catch (error) {
 		console.error(`Error connecting to SQLite: ${error}`);
 	}
 }
 
+
 const fastify = Fastify({logger: false});
 fastify.register(fastifyCookie);
 Dotenv.config({quiet: true});
-const db = connectDB();
+const db = connectDBUser();
+
+function connectDBMessage() {
+	try {
+		db.prepare(`CREATE TABLE IF NOT EXISTS message (
+			message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+			sender_id INTEGER NOT NULL,
+			receiver_id INTEGER NOT NULL,
+			text TEXT,
+			image TEXT)`).run();
+	} catch (error) {
+		console.log("Error creating Message Table: ", error);
+	}
+}
 
 const dir = path.resolve();
 
-fastify.get('/chat', (request, reply) => {
-	reply.header("Content-Type", "text/html")
-	.send("<head><title>BACKEND</title></head> \
-		We are entering the chat endpoint");
-});
+/* -------------------- AUTH GET -------------------- */
 
 fastify.get('/logout', (request, reply) => {
 	reply.header("Content-Type", "text/html")
@@ -54,6 +63,8 @@ fastify.get('/signup', (request, reply) => {
 	.send("<head><title>BACKEND</title></head> \
 		We are entering the signup endpoint");
 });
+
+/* -------------------- AUTH POST -------------------- */
 
 fastify.post('/login', (request, reply) => {
 	const { mail, password } = request.body;
@@ -104,6 +115,115 @@ fastify.post('/logout', (request, reply) => {
 	reply.status(200).send("User successfully logged out");
 });
 
+/* -------------------- MESSAGE GET -------------------- */
+
+fastify.get('/contacts', (request, reply) => {
+	try {
+		const token = request.cookies.jwt;
+		if (!token) {
+			return reply.status(401).send("Not Athenticated"); }
+		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+		const loginUserId = decoded.id;
+		console.log(loginUserId);
+		const filteredUsers = db.prepare("SELECT * FROM users WHERE id != ?").all(loginUserId);
+		if (!filteredUsers) {
+			reply.status(200).send("No other users");
+		} else {
+			reply.status(200).send(filteredUsers);
+		}
+	} catch (error) {
+		console.log(error);
+		reply.status(500).send("Internal Server Error");
+	}
+});
+
+fastify.get('/chats', (request, reply) => {
+	try {
+		const token = request.cookies.jwt;
+		if (!token) {
+			return reply.status(401).send("Not Athenticated"); }
+		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+		const loginUserId = decoded.id;
+		
+		const messages = db.prepare(`SELECT sender_id, receiver_id FROM message WHERE
+			(sender_id = ? or receiver_id = ?)`)
+			.all(loginUserId, loginUserId);
+		if (messages.length === 0) {
+			return reply.status(200).send([]);
+		}
+		const chatPartnersId = new Set();
+		messages.forEach((msg) => {
+			msg.sender_id.toString() === loginUserId.toString()
+				? chatPartnersId.add(msg.receiver_id.toString())
+				: chatPartnersId.add(msg.sender_id.toString());
+		});
+		const ids = Array.from(chatPartnersId);
+		const placeholders = ids.map(() => '?').join(', ');
+		const chatPartnersQuery = db.prepare(`
+			SELECT id, name, username, mail FROM users 
+			WHERE id IN (${placeholders})`);
+		const chatPartners = chatPartnersQuery.all(...ids);
+		reply.status(200).send(chatPartners);
+	} catch(error) {
+		console.log(error);
+		reply.status(500).send("Internal Server Error");
+	}
+});
+
+fastify.get('/:id', (request, reply) => {
+	try {
+		const token = request.cookies.jwt;
+		if (!token) {
+			return reply.status(401).send("Not Athenticated"); }
+		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+		const loginUserId = decoded.id;
+		const chatFriend = request.params.id;
+
+		const findMessages = db.prepare(`SELECT * FROM message WHERE
+			(sender_id = @myId AND receiver_id = @otherId) OR
+			(sender_id = @otherId AND receiver_id = @myId)
+			ORDER BY rowid ASC`)
+
+		const messages = findMessages.all({
+			myId: loginUserId,
+			otherId: chatFriend
+		});
+		reply.status(200).send(messages);
+	} catch(error) {
+		console.log(error);
+		reply.status(500).send("Internal Server Error");
+	}
+});
+
+/* -------------------- MESSAGE POST -------------------- */
+
+fastify.post('/send/:id', (request, reply) => {
+	try {
+		const { text, image } = request.body;
+		const token = request.cookies.jwt;
+		if (!token) {
+			return reply.status(401).send("Not Athenticated"); }
+		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+		const senderId = decoded.id;
+		const receiverId = request.params.id;
+
+		if (!text && !image) {
+			return reply.status(400).send("Must have text or image"); }
+		if (senderId === receiverId) {
+			return reply.status(400).send("Can't send message to yourself"); }
+		let imageUrl = image;
+		const messy = db.prepare(`INSERT INTO message (sender_id, receiver_id, text, image)
+			VALUES (?, ?, ?, ?)`).run(senderId, receiverId, text || null, imageUrl || null);
+		const messageId = messy.lastInsertRowid;
+		const newMessage = db.prepare(`SELECT * FROM message WHERE message_id = ?`).get(messageId);
+		reply.status(200).send(newMessage);
+	} catch(error) {
+		console.log(error);
+		reply.status(500).send("Internal Server Error");
+	}
+});
+
 const port = process.env.PORT || 3000;
 
 if (process.env.NODE_ENV === "production") {
@@ -115,11 +235,14 @@ if (process.env.NODE_ENV === "production") {
 	});
 }
 
+
 fastify.listen({ port: `${port}`}, (err, address) => {
 	if (err) {
 		console.log(err);
 		process.exit(1);
 	}
 	console.log(`Server listening on ${port}`);
-	/*CONNECT DB*/ db;
+	db; connectDBMessage();
 });
+
+module.exports = { db };
