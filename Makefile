@@ -6,7 +6,7 @@ DIST = frontend/dist
 all: $(ENV)
 	@echo "🔧 Installing dependecies..."
 	@echo "Compilation done ✅"
-	@if [ ! -d $(BACK) ] || [ ! -d $(FRONT) ] || [! -d $(DIST) ]; then \
+	@if [ ! -d $(BACK) ] || [ ! -d $(FRONT) ] || [ ! -d $(DIST) ]; then \
 		npm run build; \
 	fi
 	@echo "Build done ✅"
@@ -16,4 +16,5 @@ $(ENV):
 	@if [ ! -f $(ENV) ]; then \
 		echo "PORT=3000" >> $(ENV); \
 		echo "NODE_ENV=development" >> $(ENV); \
+		echo "JWT_SECRET=jwtsecret" >> $(ENV); \
 	fi
