@@ -5,6 +5,7 @@ const path = require('path');
 const fastifyStatic = require('@fastify/static');
 const Database = require('better-sqlite3');
 const jwt = require('jsonwebtoken');
+const cors = require('@fastify/cors');
 const { generateToken, sendEmails, emailValid } = require('./utils.js');
 
 function connectDBUser() {
@@ -23,11 +24,16 @@ function connectDBUser() {
 	}
 }
 
-
 const fastify = Fastify({logger: false});
 fastify.register(fastifyCookie);
 Dotenv.config({quiet: true});
 const db = connectDBUser();
+
+fastify.register(cors, {
+	origin: "http://localhost:5173",
+	methods: ['GET', 'POST', 'PUT', 'DELETE'],
+	credentials: true
+});
 
 function connectDBMessage() {
 	try {
@@ -62,6 +68,24 @@ fastify.get('/signup', (request, reply) => {
 	reply.header("Content-Type", "text/html")
 	.send("<head><title>BACKEND</title></head> \
 		We are entering the signup endpoint");
+});
+
+fastify.get('/auth/check', (request, reply) => {
+	try {
+		const token = request.cookies.jwt;
+		if (!token) {
+			return reply.status(401).send({ message: "Not Authenticated" });
+		}
+		const decoded = jwt.verify(token, process.env.JWT_SECRET);
+		const loginUserId = decoded.id;
+		const user = db.prepare("SELECT id, username, name, mail FROM users WHERE id = ?").get(loginUserId);
+		if (!user) {
+			return reply.status(404).send({ message: "User not found" });
+		}
+		reply.status(200).send({ id: user.id, username: user.username, name: user.name, mail: user.mail });
+	} catch (error) {
+		reply.status(401).send({ message: "Invalid or expired token" });
+	}
 });
 
 /* -------------------- AUTH POST -------------------- */
