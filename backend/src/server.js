@@ -170,7 +170,7 @@ fastify.get('/chats', (request, reply) => {
 	}
 });
 
-fastify.get('/:id', (request, reply) => {
+fastify.get('/messages/:id', (request, reply) => {
 	try {
 		const token = request.cookies.jwt;
 		if (!token) {
