@@ -4,12 +4,14 @@ dotenv.config();
 
 interface Config {
 	port: number,
-	server: string
+	server: string,
+	node: string
 }
 
 const config: Config = {
 	port: parseInt(process.env.PORT || "3000"),
-	server: process.env.SERVER_NAME || "localhost"
+	server: process.env.SERVER_NAME || "localhost",
+	node: process.env.NODE_ENV || "production"
 };
 
 export default config;
