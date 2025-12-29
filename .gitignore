@@ -1,5 +1,6 @@
 .env
 node_modules
 dist
-database.sqlite
 .vscode
+package-lock.json
+*.db
