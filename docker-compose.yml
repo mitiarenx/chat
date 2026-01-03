@@ -1,0 +1,20 @@
+services:
+  web:
+    build: ./frontend
+    container_name: web
+    ports:
+      - "8080:8080"
+    networks:
+      - nyan-network
+
+  back:
+    build: ./backend
+    container_name: back
+    ports:
+      - "3000:3000"
+    networks:
+      - nyan-network
+
+networks:
+  nyan-network:
+    driver: bridge
