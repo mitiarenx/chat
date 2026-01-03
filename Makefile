@@ -4,9 +4,11 @@ all:
 install:
 	@npm install --prefix backend && npm install --prefix frontend
 
-dev:
-	@npm run dev --prefix backend &
-	@npm run dev --prefix frontend &
+back:
+	@npm run dev --prefix backend
+
+front:
+	@npm run dev --prefix frontend
 
 fclean:
 	@docker compose down -v
@@ -14,4 +16,4 @@ fclean:
 
 re: fclean start
 
-.PHONY: all fclean start install dev
+.PHONY: all fclean start install back front
